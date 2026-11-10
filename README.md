@@ -20,6 +20,18 @@ The module is intended to be used with the [Azure Landing Zones Accelerator](htt
 
 >NOTE: The module can be used independently if needed. Example `tfvars` files can be found in the `examples` directory for that use case.
 
+### Lab management group naming
+
+The Decommissioned management group uses the ID `alz-lab-decommissioned` in
+`lib/architecture_definitions/alz_custom.alz_architecture_definition.yaml`.
+Management group IDs are tenant-wide; the default `decommissioned` ID conflicts
+with existing role assignments in this tenant. Its display name, parent, and
+`decommissioned_custom` archetype remain unchanged.
+
+After a partial apply, keep the existing remote state and generate a fresh plan
+before applying again. Do not delete role assignments at the conflicting scope.
+Preserve this customized architecture if regenerating the starter configuration.
+
 ### Running Directly
 
 #### Run the local examples

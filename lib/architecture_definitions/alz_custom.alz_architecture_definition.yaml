@@ -69,6 +69,6 @@
   - "decommissioned_custom"
   "display_name": "Decommissioned"
   "exists": false
-  "id": "decommissioned"
+  "id": "alz-lab-decommissioned"
   "parent_id": "alz"
 "name": "alz_custom"
