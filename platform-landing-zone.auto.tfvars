@@ -317,9 +317,43 @@ hub_virtual_networks = {
     }
     firewall = {
       sku_tier = "$${primary_firewall_sku_tier}"
+      default_ip_configuration = {
+        public_ip_config = {
+          ip_tags = {
+            FirstPartyUsage = "/Unprivileged"
+          }
+        }
+      }
+      management_ip_configuration = {
+        public_ip_config = {
+          ip_tags = {
+            FirstPartyUsage = "/Unprivileged"
+          }
+        }
+      }
     }
     firewall_policy = {
       sku = "$${primary_firewall_sku_tier}"
+    }
+    virtual_network_gateways = {
+      vpn = {
+        ip_configurations = {
+          active_active_1 = {
+            public_ip = {
+              ip_tags = {
+                FirstPartyUsage = "/Unprivileged"
+              }
+            }
+          }
+          active_active_2 = {
+            public_ip = {
+              ip_tags = {
+                FirstPartyUsage = "/Unprivileged"
+              }
+            }
+          }
+        }
+      }
     }
     private_dns_zones = {
       parent_id = "$${dns_resource_group_id}"
