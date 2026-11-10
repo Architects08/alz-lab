@@ -32,6 +32,20 @@ After a partial apply, keep the existing remote state and generate a fresh plan
 before applying again. Do not delete role assignments at the conflicting scope.
 Preserve this customized architecture if regenerating the starter configuration.
 
+### Lab public IP metadata
+
+This tenant adds the IP tag `FirstPartyUsage = "/Unprivileged"` to public IPs.
+The firewall data/management and VPN gateway public IP configurations explicitly
+preserve that value in `platform-landing-zone.auto.tfvars`. IP tags are distinct
+from ordinary resource tags; removing them forces public IP replacement, which
+fails while an IP is attached to the firewall or VPN gateway.
+
+The hub-and-spoke module is pinned to `0.17.5`, which forwards firewall public IP
+tags. The starter input schema exposes `ip_tags` on each firewall public IP
+configuration. Review tenant-specific IP metadata before reusing this lab
+configuration elsewhere. Generate a fresh plan and confirm no public IP
+replacements before approving recovery from a partial apply.
+
 ### Running Directly
 
 #### Run the local examples
