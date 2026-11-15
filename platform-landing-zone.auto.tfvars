@@ -378,6 +378,9 @@ hub_virtual_networks = {
       name                  = "$${primary_bastion_host_name}"
       bastion_public_ip = {
         name = "$${primary_bastion_host_public_ip_name}"
+        ip_tags = {
+          FirstPartyUsage = "/Unprivileged"
+        }
       }
     }
   }
