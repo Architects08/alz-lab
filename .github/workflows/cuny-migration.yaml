@@ -17,9 +17,9 @@ permissions:
 jobs:
   migration:
     runs-on: self-hosted
-    environment: ${{ inputs.stage == 'prepare-apply' && 'alz-lab-apply' || 'alz-lab-plan' }}
+    environment: ${{ endsWith(inputs.stage, '-apply') && 'alz-lab-apply' || 'alz-lab-plan' }}
     concurrency: lab-tfstate
-    timeout-minutes: 30
+    timeout-minutes: 90
     env:
       ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
       ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
@@ -34,7 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$MIGRATION_STAGE" in
-            inventory|prepare-plan|prepare-apply) ;;
+            inventory|prepare-plan|prepare-apply|cutover-plan|cutover-apply) ;;
             *) echo "Unsupported migration stage: $MIGRATION_STAGE" >&2; exit 1 ;;
           esac
           umask 077
@@ -58,7 +58,7 @@ jobs:
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
       - name: Configure create-only preparation
-        if: inputs.stage != 'inventory'
+        if: startsWith(inputs.stage, 'prepare-')
         shell: pwsh
         env:
           MIGRATION_STAGE: ${{ inputs.stage }}
@@ -140,11 +140,18 @@ jobs:
           Write-Host "COUNTS $($counts | ConvertTo-Json -Compress)"
 
       - name: Validate or apply create-only preparation
-        if: inputs.stage != 'inventory'
+        if: startsWith(inputs.stage, 'prepare-')
         shell: pwsh
         env:
           MIGRATION_STAGE: ${{ inputs.stage }}
         run: ./scripts/Invoke-CunyMigration.ps1 -Stage $env:MIGRATION_STAGE
+
+      - name: Validate or apply governance cutover
+        if: startsWith(inputs.stage, 'cutover-')
+        shell: pwsh
+        env:
+          MIGRATION_STAGE: ${{ inputs.stage }}
+        run: ./scripts/Invoke-CunyCutover.ps1 -CutoverStage $env:MIGRATION_STAGE
 
       - name: Remove private runner scratch state
         if: always()
@@ -152,4 +159,24 @@ jobs:
           if [[ -n "${MIGRATION_DIRECTORY:-}" ]]; then
             rm -f -- "$MIGRATION_DIRECTORY/platform.tfstate"
             rm -f -- "$MIGRATION_DIRECTORY/prepare.tfplan"
+            rm -f -- "$MIGRATION_DIRECTORY/bridge.tfplan"
+            rm -f -- "$MIGRATION_DIRECTORY/cutover-final.tfplan"
           fi
+
+      - name: Remove isolated preview state
+        if: always()
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $expected = Join-Path $env:RUNNER_TEMP "cuny-migration-$env:GITHUB_RUN_ID"
+          if ($env:MIGRATION_DIRECTORY -ne $expected) {
+            throw 'Unexpected migration scratch directory; refusing cleanup.'
+          }
+          $preview = Join-Path $expected 'cutover-preview'
+          if (Test-Path -LiteralPath $preview) {
+            Remove-Item -LiteralPath $preview -Recurse -Force
+          }
+          $archive = Join-Path $expected 'cutover-source.zip'
+          if (Test-Path -LiteralPath $archive) {
+            Remove-Item -LiteralPath $archive
+          }
