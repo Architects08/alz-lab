@@ -17,7 +17,7 @@ permissions:
 jobs:
   migration:
     runs-on: self-hosted
-    environment: alz-lab-plan
+    environment: ${{ inputs.stage == 'prepare-apply' && 'alz-lab-apply' || 'alz-lab-plan' }}
     concurrency: lab-tfstate
     timeout-minutes: 30
     env:
@@ -33,7 +33,10 @@ jobs:
           MIGRATION_STAGE: ${{ inputs.stage }}
         run: |
           set -euo pipefail
-          test "$MIGRATION_STAGE" = inventory
+          case "$MIGRATION_STAGE" in
+            inventory|prepare-plan|prepare-apply) ;;
+            *) echo "Unsupported migration stage: $MIGRATION_STAGE" >&2; exit 1 ;;
+          esac
           umask 077
           MIGRATION_DIRECTORY="$RUNNER_TEMP/cuny-migration-$GITHUB_RUN_ID"
           mkdir -p "$MIGRATION_DIRECTORY"
@@ -51,6 +54,13 @@ jobs:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Configure create-only preparation
+        if: inputs.stage != 'inventory'
+        shell: pwsh
+        env:
+          MIGRATION_STAGE: ${{ inputs.stage }}
+        run: ./scripts/Invoke-CunyMigration.ps1 -Stage $env:MIGRATION_STAGE -ConfigureOnly
 
       - name: Initialize private backend
         run: |
@@ -110,6 +120,9 @@ jobs:
               }
               if ($resource.name -eq 'policy_assignments') {
                 $body = $attributes.body
+                if ($body -is [hashtable] -and $body.ContainsKey('value')) {
+                  $body = $body.value
+                }
                 if ($body -is [string]) { $body = $body | ConvertFrom-Json -AsHashtable }
                 $scope = ($attributes.id -split '/providers/')[-2]
                 $counts["assignment_scope:$scope"]++
@@ -124,9 +137,17 @@ jobs:
           }
           Write-Host "COUNTS $($counts | ConvertTo-Json -Compress)"
 
+      - name: Validate or apply create-only preparation
+        if: inputs.stage != 'inventory'
+        shell: pwsh
+        env:
+          MIGRATION_STAGE: ${{ inputs.stage }}
+        run: ./scripts/Invoke-CunyMigration.ps1 -Stage $env:MIGRATION_STAGE
+
       - name: Remove private runner scratch state
         if: always()
         run: |
           if [[ -n "${MIGRATION_DIRECTORY:-}" ]]; then
             rm -f -- "$MIGRATION_DIRECTORY/platform.tfstate"
+            rm -f -- "$MIGRATION_DIRECTORY/prepare.tfplan"
           fi

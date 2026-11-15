@@ -214,7 +214,7 @@ management_group_settings = {
     }
   }
   policy_assignments_to_modify = {
-    alz = {
+    cuny = {
       policy_assignments = {
         Deploy-MDFC-Config-H224 = {
           parameters = {
@@ -241,7 +241,21 @@ management_group_settings = {
         }
       }
     }
-    landingzones = {
+    bmcc = {
+      policy_assignments = {
+        Enable-DDoS-VNET = {
+          creation_enabled = false
+        }
+      }
+    }
+    brooklyn = {
+      policy_assignments = {
+        Enable-DDoS-VNET = {
+          creation_enabled = false
+        }
+      }
+    }
+    queens = {
       policy_assignments = {
         Enable-DDoS-VNET = {
           creation_enabled = false
