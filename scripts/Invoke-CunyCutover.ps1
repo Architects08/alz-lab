@@ -53,6 +53,18 @@ function Get-AzureJson {
     return ($json | ConvertFrom-Json -AsHashtable -Depth 100)
 }
 
+function Move-CunyManagementGroup {
+    param([string] $Name)
+    $uri = "https://management.azure.com/providers/Microsoft.Management/managementGroups/${Name}?api-version=2023-04-01"
+    $body = @{
+        properties = @{ details = @{
+            parent = @{ id = '/providers/Microsoft.Management/managementGroups/cuny' }
+        } }
+    } | ConvertTo-Json -Depth 10 -Compress
+    & az rest --method patch --url $uri --body $body --only-show-errors --output none
+    if ($LASTEXITCODE -ne 0) { throw "Cannot move existing management group $Name." }
+}
+
 function Assert-CutoverPlan {
     param([hashtable] $Plan, [string[]] $Rebindings = @())
 
@@ -122,8 +134,12 @@ function Assert-CutoverInventory {
     if ($prepared.Count -ne 173) { throw 'Destination governance is not fully prepared.' }
     foreach ($group in @('corp', 'local', 'online')) {
         if ($group -notin $Entries.Key) { continue }
-        $source = Get-AzureJson @('account', 'management-group', 'show', '--name', $group, '--expand')
-        if (@($source.children | Where-Object { $_ }).Count -ne 0) {
+        $uri = "https://management.azure.com/providers/Microsoft.Management/managementGroups/${group}?api-version=2023-04-01&`$expand=children"
+        $source = Get-AzureJson @('rest', '--method', 'get', '--url', $uri)
+        if ($source.name -ne $group -or $null -eq $source.properties) {
+            throw "Unexpected management-group inventory response for $group."
+        }
+        if (@($source.properties.children | Where-Object { $_ }).Count -ne 0) {
             throw "$group is no longer empty; its contents require an explicit migration."
         }
     }
@@ -184,8 +200,7 @@ function Invoke-Bridge {
         }
     }
     if ($Apply) {
-        & az account management-group update --name alz --parent cuny --only-show-errors --output none
-        if ($LASTEXITCODE -ne 0) { throw 'Cannot establish the common-ancestor governance bridge.' }
+        Move-CunyManagementGroup 'alz'
     }
 
     $moves = @()
@@ -247,8 +262,7 @@ module "management_groups" {
     [IO.File]::WriteAllBytes((Join-Path $PWD $architecturePath), $originalArchitecture)
 
     foreach ($group in $retained) {
-        & az account management-group update --name $group --parent cuny --only-show-errors --output none
-        if ($LASTEXITCODE -ne 0) { throw "Cannot move existing management group $group." }
+        Move-CunyManagementGroup $group
         $address = 'module.management_groups[0].azapi_resource.management_groups_level_1[' +
             ($group | ConvertTo-Json -Compress) + ']'
         $id = "/providers/Microsoft.Management/managementGroups/${group}?api-version=2023-04-01"
