@@ -27,11 +27,13 @@ function Get-StateEntries {
             $parts += @($resource.type, $resource.name)
             $address = ($parts |
                 Where-Object { $_ }) -join '.'
+            $collectionAddress = $address
             if ($instance.ContainsKey('index_key')) {
                 $address += "[$($instance.index_key | ConvertTo-Json -Compress)]"
             }
             @{
                 Address = $address
+                CollectionAddress = $collectionAddress
                 Mode = $resource.mode
                 Module = $resource.module
                 Type = $resource.type
@@ -150,7 +152,8 @@ function Get-MetadataOnlyUpdates {
     param([hashtable] $Plan)
 
     $metadata = @('create_headers', 'delete_headers', 'read_headers', 'update_headers',
-        'output', 'response_export_values', 'replace_triggers_external_values')
+        'output', 'response_export_values', 'replace_triggers_external_values',
+        'timeouts', 'retry', 'schema_validation_enabled')
     foreach ($change in $Plan.resource_changes) {
         if ($change.type -ne 'azapi_resource' -or
             -not $change.address.StartsWith('module.management_groups[0].') -or
@@ -239,9 +242,11 @@ function Invoke-Bridge {
     $dataEntries = @(Get-StateEntries -IncludeData | Where-Object { $_.Mode -eq 'data' })
     if ($dataEntries.Count -gt 0) {
         foreach ($entry in $dataEntries | Where-Object { $_.Attributes.ContainsKey('store') }) {
-            Write-Host "Refreshing legacy data schema: $($entry.Address)"
+            Write-Host "Refreshing legacy data schema: $($entry.CollectionAddress)"
         }
-        Invoke-TerraformChecked (@('state', 'rm', '-lock-timeout=5m') + $dataEntries.Address)
+        $collections = @($dataEntries.CollectionAddress | Sort-Object -Unique)
+        & terraform @(@('state', 'rm', '-lock-timeout=5m') + $collections) | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot refresh cached data-source state.' }
         Write-Host "Cleared $($dataEntries.Count) cached data-source records; managed resource ownership is unchanged."
     }
     $entries = @(Get-StateEntries)

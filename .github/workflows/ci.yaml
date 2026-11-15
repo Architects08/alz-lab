@@ -22,6 +22,7 @@ on:
           - prepare-apply
           - cutover-plan
           - cutover-apply
+          - verify
 
 jobs:
   validate_and_plan:

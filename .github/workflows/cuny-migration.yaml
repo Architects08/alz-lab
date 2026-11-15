@@ -34,7 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$MIGRATION_STAGE" in
-            inventory|prepare-plan|prepare-apply|cutover-plan|cutover-apply) ;;
+            inventory|prepare-plan|prepare-apply|cutover-plan|cutover-apply|verify) ;;
             *) echo "Unsupported migration stage: $MIGRATION_STAGE" >&2; exit 1 ;;
           esac
           umask 077
@@ -153,6 +153,11 @@ jobs:
           MIGRATION_STAGE: ${{ inputs.stage }}
         run: ./scripts/Invoke-CunyCutover.ps1 -CutoverStage $env:MIGRATION_STAGE
 
+      - name: Verify the full final plan without applying baseline networking drift
+        if: inputs.stage == 'verify'
+        shell: pwsh
+        run: ./scripts/Invoke-CunyVerification.ps1
+
       - name: Remove private runner scratch state
         if: always()
         run: |
@@ -161,6 +166,7 @@ jobs:
             rm -f -- "$MIGRATION_DIRECTORY/prepare.tfplan"
             rm -f -- "$MIGRATION_DIRECTORY/bridge.tfplan"
             rm -f -- "$MIGRATION_DIRECTORY/cutover-final.tfplan"
+            rm -f -- "$MIGRATION_DIRECTORY/final-verification.tfplan"
           fi
 
       - name: Remove isolated preview state
