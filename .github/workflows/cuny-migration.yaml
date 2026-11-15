@@ -74,54 +74,55 @@ jobs:
             --name terraform.tfstate \
             --query '{snapshot:snapshot}' -o json
           terraform state pull > "$MIGRATION_DIRECTORY/platform.tfstate"
-          python3 - <<'PY'
-          import collections
-          import json
-          import os
-          from pathlib import Path
 
-          state = json.loads(
-              (Path(os.environ["MIGRATION_DIRECTORY"]) / "platform.tfstate").read_text()
-          )
-          print("STATE", json.dumps({
-              "serial": state["serial"],
-              "lineage": state["lineage"],
-              "terraform_version": state["terraform_version"],
-          }))
-          counts = collections.Counter()
-          for resource in state["resources"]:
-              if resource["mode"] != "managed":
-                  continue
-              for instance in resource["instances"]:
-                  address = ".".join(filter(None, [
-                      resource.get("module"), resource["type"], resource["name"],
-                  ]))
-                  if "index_key" in instance:
-                      address += "[" + json.dumps(instance["index_key"]) + "]"
-                  attributes = instance["attributes"]
-                  resource_id = attributes.get("id", "")
-                  if resource.get("module") == "module.management_groups[0]":
-                      counts[resource["name"]] += 1
-                      if resource["name"].startswith("management_groups_level_"):
-                          print("GROUP", json.dumps({
-                              "address": address, "id": resource_id,
-                              "body": attributes.get("body"),
-                              "replace_triggers": attributes.get(
-                                  "replace_triggers_external_values"
-                              ),
-                          }))
-                  if resource["name"] == "policy_assignments":
-                      assignment = attributes.get("body", {})
-                      if isinstance(assignment, str):
-                          assignment = json.loads(assignment)
-                      properties = assignment.get("properties", {})
-                      counts["assignment_scope:" + resource_id.split("/providers/")[-2]] += 1
-                      if properties.get("notScopes"):
-                          print("EXCLUSIONS", json.dumps({
-                              "address": address, "notScopes": properties["notScopes"],
-                          }))
-          print("COUNTS", json.dumps(dict(sorted(counts.items()))))
-          PY
+      - name: Report non-secret state inventory
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $state = Get-Content "$env:MIGRATION_DIRECTORY/platform.tfstate" -Raw |
+            ConvertFrom-Json -AsHashtable
+          Write-Host "STATE $(@{
+            serial = $state.serial
+            lineage = $state.lineage
+            terraform_version = $state.terraform_version
+          } | ConvertTo-Json -Compress)"
+          $counts = @{}
+          foreach ($resource in $state.resources) {
+            if ($resource.mode -ne 'managed') { continue }
+            foreach ($instance in $resource.instances) {
+              $address = (@(
+                $resource.module, $resource.type, $resource.name
+              ) | Where-Object { $_ }) -join '.'
+              if ($instance.ContainsKey('index_key')) {
+                $address += "[$($instance.index_key | ConvertTo-Json -Compress)]"
+              }
+              $attributes = $instance.attributes
+              if ($resource.module -eq 'module.management_groups[0]') {
+                $counts[$resource.name]++
+                if ($resource.name.StartsWith('management_groups_level_')) {
+                  Write-Host "GROUP $(@{
+                    address = $address
+                    id = $attributes.id
+                    body = $attributes.body
+                    replace_triggers = $attributes.replace_triggers_external_values
+                  } | ConvertTo-Json -Compress -Depth 20)"
+                }
+              }
+              if ($resource.name -eq 'policy_assignments') {
+                $body = $attributes.body
+                if ($body -is [string]) { $body = $body | ConvertFrom-Json -AsHashtable }
+                $scope = ($attributes.id -split '/providers/')[-2]
+                $counts["assignment_scope:$scope"]++
+                if ($body.properties.notScopes.Count -gt 0) {
+                  Write-Host "EXCLUSIONS $(@{
+                    address = $address
+                    notScopes = $body.properties.notScopes
+                  } | ConvertTo-Json -Compress)"
+                }
+              }
+            }
+          }
+          Write-Host "COUNTS $($counts | ConvertTo-Json -Compress)"
 
       - name: Remove private runner scratch state
         if: always()
