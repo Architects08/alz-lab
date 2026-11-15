@@ -22,6 +22,31 @@ The module is intended to be used with the [Azure Landing Zones Accelerator](htt
 
 ### Lab management group naming
 
+The CUNY architecture places `cuny` directly below Tenant Root. Its direct children
+are Platform (`platform`), BMCC (`bmcc`), Brooklyn (`brooklyn`), Queens (`queens`),
+Sandbox (`sandbox`), and Decommissioned (`alz-lab-decommissioned`). Connectivity,
+Identity, Management, and Security remain below Platform.
+
+The three colleges use the same `landing_zones_custom` archetype. The archetype
+name does not create a Landing Zones management group. This preserves the existing
+common workload controls without applying the former Corp/Local/Online-specific
+archetypes. The college DDoS policy remains disabled. Designing a new college
+baseline and deploying AMBA are separate changes.
+
+The runtime architecture and `platform-landing-zone.auto.tfvars` are mirrored by
+the Accelerator source architecture and `platform-landing-zone.tfvars` under
+`../config`. The runtime root is marked `exists: true` because bootstrap owns
+that group. `root_parent_management_group_id` is empty to resolve to Tenant Root;
+it must not be set to `cuny` when `cuny` is already the architecture root.
+
+**Existing deployments require a staged migration, not a direct apply of the
+new hierarchy.** The installed ALZ module replaces management groups when their
+parent changes. Preserve existing groups with controlled Azure moves and exact
+state reconciliation, and migrate root policy references before leaving the
+old hierarchy. Bootstrap and platform states must not own the same group.
+Bootstrap must stop managing initial subscription placements once platform
+Terraform owns them; never rerun bootstrap blindly to change the hierarchy.
+
 The Decommissioned management group uses the ID `alz-lab-decommissioned` in
 `lib/architecture_definitions/alz_custom.alz_architecture_definition.yaml`.
 Management group IDs are tenant-wide; the default `decommissioned` ID conflicts

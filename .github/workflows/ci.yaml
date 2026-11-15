@@ -18,6 +18,8 @@ on:
         options:
           - none
           - inventory
+          - prepare-plan
+          - prepare-apply
 
 jobs:
   validate_and_plan:
