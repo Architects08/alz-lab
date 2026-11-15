@@ -50,7 +50,7 @@ if ($ConfigureOnly) {
         Set-Content 'lib/architecture_definitions/cuny_prepare.alz_architecture_definition.json'
 
     # Keep the existing deployment unchanged while a separate module creates destinations.
-    $baseline = 'fc23b9daca8cda8c9bdadaeb05f84000a769317a'
+    $baseline = 'd47b42d00d1d3e1d7f2d0172dc018b5b86881571'
     foreach ($file in @(
         'lib/architecture_definitions/alz_custom.alz_architecture_definition.yaml',
         'platform-landing-zone.auto.tfvars',
@@ -76,16 +76,31 @@ module "cuny_prepare" {
     queens   = local.policy_assignments_to_modify.landingzones
   }
   enable_telemetry                     = var.enable_telemetry
-  policy_assignments_dependencies      = local.management_group_dependencies
-  policy_role_assignments_dependencies = local.management_group_dependencies
+  override_policy_definition_parameter_assign_permissions_set   = module.config.outputs.management_group_settings.override_policy_definition_parameter_assign_permissions_set
+  override_policy_definition_parameter_assign_permissions_unset = module.config.outputs.management_group_settings.override_policy_definition_parameter_assign_permissions_unset
+  role_assignment_name_use_random_uuid                          = module.config.outputs.management_group_settings.role_assignment_name_use_random_uuid
+  role_assignment_definition_lookup_enabled                     = module.config.outputs.management_group_settings.role_assignment_definition_lookup_enabled
+  policy_assignment_non_compliance_message_settings             = module.config.outputs.management_group_settings.policy_assignment_non_compliance_message_settings
+  resource_types                                               = module.config.outputs.management_group_settings.resource_types
+  retries                                                      = module.config.outputs.management_group_settings.retries
+  timeouts                                                     = module.config.outputs.management_group_settings.timeouts
 }
 '@ | Set-Content 'cuny_prepare.tf'
+    & terraform fmt cuny_prepare.tf
+    if ($LASTEXITCODE -ne 0) { throw 'Generated preparation module is invalid.' }
     return
 }
 
 $planPath = Join-Path $env:MIGRATION_DIRECTORY 'prepare.tfplan'
-& terraform plan -input=false -no-color -lock-timeout=5m "-out=$planPath"
-if ($LASTEXITCODE -ne 0) { throw 'Terraform preparation plan failed.' }
+# Only the new hierarchy is in this apply; the deployed platform has independent drift.
+$planOutput = & terraform plan -input=false -no-color -parallelism=1 `
+    -target=module.cuny_prepare -lock-timeout=5m "-out=$planPath"
+$planExitCode = $LASTEXITCODE
+$planOutput | ForEach-Object { Write-Host $_ }
+if ($planExitCode -ne 0) { throw 'Terraform preparation plan failed.' }
+if (($planOutput -join "`n") -match 'PolicyRoleAssignmentError') {
+    throw 'Policy permission generation must succeed before preparation can apply.'
+}
 $plan = (& terraform show -json $planPath) | ConvertFrom-Json -AsHashtable -Depth 100
 if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect the preparation plan.' }
 Assert-CreateOnlyPreparation $plan

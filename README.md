@@ -47,6 +47,12 @@ old hierarchy. Bootstrap and platform states must not own the same group.
 Bootstrap must stop managing initial subscription placements once platform
 Terraform owns them; never rerun bootstrap blindly to change the hierarchy.
 
+The temporary CUNY preparation workflow targets only its new module and rejects
+any modification or deletion of existing resources. It explicitly forwards the
+same policy-permission and role-ID settings as the existing module, rather than
+using different module defaults. Run a full plan at cutover verification as well;
+targeted preparation is not a substitute for checking the complete deployment.
+
 The Decommissioned management group uses the ID `alz-lab-decommissioned` in
 `lib/architecture_definitions/alz_custom.alz_architecture_definition.yaml`.
 Management group IDs are tenant-wide; the default `decommissioned` ID conflicts
@@ -60,7 +66,7 @@ Preserve this customized architecture if regenerating the starter configuration.
 ### Lab public IP metadata
 
 This tenant adds the IP tag `FirstPartyUsage = "/Unprivileged"` to public IPs.
-The firewall data/management and VPN gateway public IP configurations explicitly
+The firewall data/management, VPN gateway, and Bastion public IP configurations explicitly
 preserve that value in `platform-landing-zone.auto.tfvars`. IP tags are distinct
 from ordinary resource tags; removing them forces public IP replacement, which
 fails while an IP is attached to the firewall or VPN gateway.
