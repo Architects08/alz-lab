@@ -77,3 +77,32 @@ foreach ($unsafe in @(
     if (-not $rejected) { throw "Unsafe cutover was accepted: $($unsafe.address)" }
 }
 Write-Host 'CUNY cutover safety tests passed.'
+
+$typedMetadata = @{
+    type = 'azapi_resource'
+    address = 'module.management_groups[0].azapi_resource.management_groups_level_1["bmcc"]'
+    previous_address = 'module.cuny_prepare.azapi_resource.management_groups_level_1["bmcc"]'
+    change = @{
+        actions = @('update')
+        before = @{ body = @{ parent = 'cuny' }; update_headers = @{ telemetry = 'preparation' } }
+        after = @{ body = @{ parent = 'cuny' }; update_headers = @{ telemetry = 'final-module' } }
+        after_unknown = @{ output = $true }
+    }
+}
+$safe = @(Get-MetadataOnlyUpdates @{ resource_changes = @($typedMetadata) })
+if ($safe.Count -ne 1) { throw 'Header-only ownership transfer was not recognized.' }
+Assert-CutoverPlan @{
+    resource_changes = @(
+        (New-CutoverChange 'management_groups_level_1' 'bmcc' @('update'))
+    )
+} @() $safe
+$typedMetadata.change.after.body = @{ parent = 'different-parent' }
+if (@(Get-MetadataOnlyUpdates @{ resource_changes = @($typedMetadata) }).Count -ne 0) {
+    throw 'A real management-group parent change was misclassified as metadata.'
+}
+$typedMetadata.change.after.body = @{ parent = 'cuny' }
+$typedMetadata.change.after_unknown = @{ body = @{ parent = $true } }
+if (@(Get-MetadataOnlyUpdates @{ resource_changes = @($typedMetadata) }).Count -ne 0) {
+    throw 'An unknown resource-body change was misclassified as metadata.'
+}
+Write-Host 'CUNY provider-metadata classification tests passed.'
