@@ -94,7 +94,7 @@ module "cuny_prepare" {
 $planPath = Join-Path $env:MIGRATION_DIRECTORY 'prepare.tfplan'
 # Only the new hierarchy is in this apply; the deployed platform has independent drift.
 $planOutput = & terraform plan -input=false -no-color -parallelism=1 `
-    -target=module.cuny_prepare -lock-timeout=5m "-out=$planPath"
+    "-target=module.cuny_prepare" -lock-timeout=5m "-out=$planPath"
 $planExitCode = $LASTEXITCODE
 $planOutput | ForEach-Object { Write-Host $_ }
 if ($planExitCode -ne 0) { throw 'Terraform preparation plan failed.' }
