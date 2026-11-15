@@ -35,7 +35,7 @@ Preserve this customized architecture if regenerating the starter configuration.
 ### Lab public IP metadata
 
 This tenant adds the IP tag `FirstPartyUsage = "/Unprivileged"` to public IPs.
-The firewall data/management and VPN gateway public IP configurations explicitly
+The firewall data/management, VPN gateway, and Bastion public IP configurations explicitly
 preserve that value in `platform-landing-zone.auto.tfvars`. IP tags are distinct
 from ordinary resource tags; removing them forces public IP replacement, which
 fails while an IP is attached to the firewall or VPN gateway.
