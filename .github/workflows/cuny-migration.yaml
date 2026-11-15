@@ -1,0 +1,127 @@
+name: CUNY staged migration
+
+on:
+  workflow_call:
+    inputs:
+      stage:
+        required: true
+        type: string
+      terraform_cli_version:
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  migration:
+    runs-on: self-hosted
+    environment: alz-lab-apply
+    concurrency: lab-tfstate
+    timeout-minutes: 30
+    env:
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_USE_AZUREAD: true
+      ARM_USE_OIDC: true
+      TF_IN_AUTOMATION: true
+      MIGRATION_DIRECTORY: ${{ runner.temp }}/cuny-migration-${{ github.run_id }}
+    steps:
+      - name: Check operation
+        env:
+          MIGRATION_STAGE: ${{ inputs.stage }}
+        run: |
+          set -euo pipefail
+          test "$MIGRATION_STAGE" = inventory
+          umask 077
+          mkdir -p "$MIGRATION_DIRECTORY"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
+        with:
+          terraform_wrapper: false
+          terraform_version: ${{ inputs.terraform_cli_version }}
+
+      - uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Initialize private backend
+        run: |
+          set -euo pipefail
+          terraform init -input=false \
+            -backend-config="resource_group_name=${{ vars.BACKEND_AZURE_RESOURCE_GROUP_NAME }}" \
+            -backend-config="storage_account_name=${{ vars.BACKEND_AZURE_STORAGE_ACCOUNT_NAME }}" \
+            -backend-config="container_name=${{ vars.BACKEND_AZURE_STORAGE_ACCOUNT_CONTAINER_NAME }}" \
+            -backend-config="key=terraform.tfstate"
+
+      - name: Back up and inventory state privately
+        env:
+          STORAGE_ACCOUNT: ${{ vars.BACKEND_AZURE_STORAGE_ACCOUNT_NAME }}
+          STORAGE_CONTAINER: ${{ vars.BACKEND_AZURE_STORAGE_ACCOUNT_CONTAINER_NAME }}
+        run: |
+          set -euo pipefail
+          umask 077
+          az storage blob snapshot --auth-mode login \
+            --account-name "$STORAGE_ACCOUNT" \
+            --container-name "$STORAGE_CONTAINER" \
+            --name terraform.tfstate \
+            --query '{snapshot:snapshot}' -o json
+          terraform state pull > "$MIGRATION_DIRECTORY/platform.tfstate"
+          python3 - <<'PY'
+          import collections
+          import json
+          import os
+          from pathlib import Path
+
+          state = json.loads(
+              (Path(os.environ["MIGRATION_DIRECTORY"]) / "platform.tfstate").read_text()
+          )
+          print("STATE", json.dumps({
+              "serial": state["serial"],
+              "lineage": state["lineage"],
+              "terraform_version": state["terraform_version"],
+          }))
+          counts = collections.Counter()
+          for resource in state["resources"]:
+              if resource["mode"] != "managed":
+                  continue
+              for instance in resource["instances"]:
+                  address = ".".join(filter(None, [
+                      resource.get("module"), resource["type"], resource["name"],
+                  ]))
+                  if "index_key" in instance:
+                      address += "[" + json.dumps(instance["index_key"]) + "]"
+                  attributes = instance["attributes"]
+                  resource_id = attributes.get("id", "")
+                  if resource.get("module") == "module.management_groups[0]":
+                      counts[resource["name"]] += 1
+                      if resource["name"].startswith("management_groups_level_"):
+                          print("GROUP", json.dumps({
+                              "address": address, "id": resource_id,
+                              "body": attributes.get("body"),
+                              "replace_triggers": attributes.get(
+                                  "replace_triggers_external_values"
+                              ),
+                          }))
+                  if resource["name"] == "policy_assignments":
+                      assignment = attributes.get("body", {})
+                      if isinstance(assignment, str):
+                          assignment = json.loads(assignment)
+                      properties = assignment.get("properties", {})
+                      counts["assignment_scope:" + resource_id.split("/providers/")[-2]] += 1
+                      if properties.get("notScopes"):
+                          print("EXCLUSIONS", json.dumps({
+                              "address": address, "notScopes": properties["notScopes"],
+                          }))
+          print("COUNTS", json.dumps(dict(sorted(counts.items()))))
+          PY
+
+      - name: Remove private runner scratch state
+        if: always()
+        run: rm -f -- "$MIGRATION_DIRECTORY/platform.tfstate"
