@@ -13,21 +13,26 @@ function Invoke-TerraformChecked {
 }
 
 function Get-StateEntries {
+    param([switch] $IncludeData)
     $state = (& terraform state pull) | ConvertFrom-Json -AsHashtable -Depth 100
     if ($LASTEXITCODE -ne 0) { throw 'Cannot read platform state.' }
     if ($state.lineage -ne '98ac4e86-d505-bd80-0fa1-eb2c88d11db0') {
         throw 'This is not the inventoried platform state.'
     }
     foreach ($resource in $state.resources) {
-        if ($resource.mode -ne 'managed') { continue }
+        if (-not $IncludeData -and $resource.mode -ne 'managed') { continue }
         foreach ($instance in $resource.instances) {
-            $address = (@($resource.module, $resource.type, $resource.name) |
+            $parts = @($resource.module)
+            if ($resource.mode -eq 'data') { $parts += 'data' }
+            $parts += @($resource.type, $resource.name)
+            $address = ($parts |
                 Where-Object { $_ }) -join '.'
             if ($instance.ContainsKey('index_key')) {
                 $address += "[$($instance.index_key | ConvertTo-Json -Compress)]"
             }
             @{
                 Address = $address
+                Mode = $resource.mode
                 Module = $resource.module
                 Type = $resource.type
                 Name = $resource.name
@@ -66,7 +71,7 @@ function Move-CunyManagementGroup {
 }
 
 function Assert-CutoverPlan {
-    param([hashtable] $Plan, [string[]] $Rebindings = @())
+    param([hashtable] $Plan, [string[]] $Rebindings = @(), [string[]] $MetadataUpdates = @())
 
     foreach ($change in $Plan.resource_changes) {
         if ($change.mode -ne 'managed') { continue }
@@ -87,6 +92,7 @@ function Assert-CutoverPlan {
         if (-not $change.address.StartsWith('module.management_groups[0].')) {
             throw "Cutover would change an unrelated resource: $($change.address)"
         }
+        if ($actions -eq 'update' -and $change.address -in $MetadataUpdates) { continue }
         if ($change.type -in @('terraform_data', 'time_sleep', 'modtm_telemetry', 'random_uuid')) {
             continue
         }
@@ -123,6 +129,62 @@ function Assert-CutoverPlan {
             default { throw "Unexpected cutover resource: $($change.address)" }
         }
     }
+}
+
+function Test-UnknownInputValue {
+    param($Value)
+    if ($Value -is [bool]) { return $Value }
+    if ($Value -is [System.Collections.IDictionary]) {
+        foreach ($child in $Value.Values) {
+            if (Test-UnknownInputValue $child) { return $true }
+        }
+    } elseif ($Value -is [array]) {
+        foreach ($child in $Value) {
+            if (Test-UnknownInputValue $child) { return $true }
+        }
+    }
+    return $false
+}
+
+function Get-MetadataOnlyUpdates {
+    param([hashtable] $Plan)
+
+    $metadata = @('create_headers', 'delete_headers', 'read_headers', 'update_headers',
+        'output', 'response_export_values', 'replace_triggers_external_values')
+    foreach ($change in $Plan.resource_changes) {
+        if ($change.type -ne 'azapi_resource' -or
+            -not $change.address.StartsWith('module.management_groups[0].') -or
+            ($change.change.actions -join ',') -ne 'update') {
+            continue
+        }
+        if ($change.previous_address -and $change.address -ne
+            $change.previous_address.Replace('module.cuny_prepare.', 'module.management_groups[0].')) {
+            throw "Unexpected metadata transfer origin: $($change.address)"
+        }
+        $before = $change.change.before
+        $after = $change.change.after
+        $fields = @(@($before.Keys) + @($after.Keys) | Sort-Object -Unique | Where-Object {
+            ($before[$_] | ConvertTo-Json -Depth 100 -Compress) -cne
+            ($after[$_] | ConvertTo-Json -Depth 100 -Compress)
+        })
+        $unknownInputs = @($change.change.after_unknown.Keys | Where-Object {
+            $_ -notin $metadata -and (Test-UnknownInputValue $change.change.after_unknown[$_])
+        })
+        $fields = @(@($fields) + @($unknownInputs) | Sort-Object -Unique)
+        if (@($fields | Where-Object { $_ -notin $metadata }).Count -eq 0) {
+            Write-Host "Provider metadata only: $($change.address): $($fields -join ', ')"
+            $change.address
+        } elseif ($change.previous_address) {
+            Write-Host "Moved-resource difference: $($change.address): $($fields -join ', ')"
+        }
+    }
+}
+
+function Get-CutoverTypedPlan {
+    param([string] $Path)
+    $json = & terraform show -json $Path
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect cutover resource-body changes.' }
+    return ($json | ConvertFrom-Json -AsHashtable -Depth 100)
 }
 
 function Assert-CutoverInventory {
@@ -174,6 +236,14 @@ function Assert-CutoverInventory {
 function Invoke-Bridge {
     param([switch] $Apply)
 
+    $dataEntries = @(Get-StateEntries -IncludeData | Where-Object { $_.Mode -eq 'data' })
+    if ($dataEntries.Count -gt 0) {
+        foreach ($entry in $dataEntries | Where-Object { $_.Attributes.ContainsKey('store') }) {
+            Write-Host "Refreshing legacy data schema: $($entry.Address)"
+        }
+        Invoke-TerraformChecked (@('state', 'rm', '-lock-timeout=5m') + $dataEntries.Address)
+        Write-Host "Cleared $($dataEntries.Count) cached data-source records; managed resource ownership is unchanged."
+    }
     $entries = @(Get-StateEntries)
     $rebindings = @($entries | Where-Object {
         $_.Module -eq 'module.management_groups[0]' -and $_.Name -eq 'policy_assignments' -and
@@ -254,7 +324,9 @@ module "management_groups" {
         throw 'Governance bridge plan failed.'
     }
     $plan = ConvertFrom-PlanEvents $events
-    Assert-CutoverPlan $plan $rebindings
+    $typed = Get-CutoverTypedPlan $planPath
+    $metadataUpdates = @(Get-MetadataOnlyUpdates $typed)
+    Assert-CutoverPlan $plan $rebindings $metadataUpdates
     Write-Host "Governance bridge plan passed. Policy assignment rebindings: $($rebindings.Count)."
     if (-not $Apply) { return }
     Invoke-TerraformChecked @('apply', '-input=false', '-no-color', $planPath)
@@ -275,7 +347,8 @@ module "management_groups" {
         '-target=module.management_groups[0]' "-out=$finalPath"
     if ($LASTEXITCODE -ne 0) { throw 'Post-import cutover plan failed.' }
     $final = ConvertFrom-PlanEvents $events
-    Assert-CutoverPlan $final @()
+    $typed = Get-CutoverTypedPlan $finalPath
+    Assert-CutoverPlan $final @() @(Get-MetadataOnlyUpdates $typed)
     Invoke-TerraformChecked @('apply', '-input=false', '-no-color', $finalPath)
     Write-Host 'Retained groups moved in place. Bootstrap ownership reconciliation and legacy root retirement remain.'
 }
