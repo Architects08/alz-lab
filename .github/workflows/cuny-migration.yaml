@@ -27,7 +27,6 @@ jobs:
       ARM_USE_AZUREAD: true
       ARM_USE_OIDC: true
       TF_IN_AUTOMATION: true
-      MIGRATION_DIRECTORY: ${{ runner.temp }}/cuny-migration-${{ github.run_id }}
     steps:
       - name: Check operation
         env:
@@ -36,7 +35,9 @@ jobs:
           set -euo pipefail
           test "$MIGRATION_STAGE" = inventory
           umask 077
+          MIGRATION_DIRECTORY="$RUNNER_TEMP/cuny-migration-$GITHUB_RUN_ID"
           mkdir -p "$MIGRATION_DIRECTORY"
+          printf 'MIGRATION_DIRECTORY=%s\n' "$MIGRATION_DIRECTORY" >> "$GITHUB_ENV"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
 
@@ -124,4 +125,7 @@ jobs:
 
       - name: Remove private runner scratch state
         if: always()
-        run: rm -f -- "$MIGRATION_DIRECTORY/platform.tfstate"
+        run: |
+          if [[ -n "${MIGRATION_DIRECTORY:-}" ]]; then
+            rm -f -- "$MIGRATION_DIRECTORY/platform.tfstate"
+          fi
