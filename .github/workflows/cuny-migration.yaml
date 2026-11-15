@@ -17,7 +17,7 @@ permissions:
 jobs:
   migration:
     runs-on: self-hosted
-    environment: alz-lab-apply
+    environment: alz-lab-plan
     concurrency: lab-tfstate
     timeout-minutes: 30
     env:
