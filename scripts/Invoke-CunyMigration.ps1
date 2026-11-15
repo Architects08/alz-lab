@@ -34,6 +34,64 @@ function Get-CunyArchitecture {
     return ($encoded | ConvertFrom-Json | ConvertFrom-Json -AsHashtable)
 }
 
+function ConvertFrom-PreparationEvents {
+    param([string[]] $Lines)
+
+    $changes = @()
+    $summary = $null
+    $supportedVersion = $false
+    foreach ($line in $Lines) {
+        $event = $line | ConvertFrom-Json -AsHashtable -Depth 100
+        switch ($event.type) {
+            'version' {
+                if ($event.ui -notmatch '^1\.') { throw 'Unsupported Terraform UI JSON version.' }
+                $supportedVersion = $true
+            }
+            'diagnostic' {
+                $diagnostic = $event.diagnostic
+                if ($diagnostic.severity -eq 'error' -or
+                    $diagnostic.detail -match 'PolicyRoleAssignmentError') {
+                    throw "$($diagnostic.summary): $($diagnostic.detail)"
+                }
+                Write-Warning $diagnostic.summary
+            }
+            'planned_action_invocation' { throw 'Terraform actions are not allowed in preparation.' }
+            'planned_change' {
+                $resource = $event.change.resource
+                $actions = switch ($event.change.action) {
+                    'create' { @('create') }
+                    'update' { @('update') }
+                    'delete' { @('delete') }
+                    'replace' { @('delete', 'create') }
+                    'read' { @('read') }
+                    default { throw "Unsupported planned action: $($event.change.action)" }
+                }
+                $changes += @{
+                    mode = if ($resource.addr -match '(^|\.)data\.') { 'data' } else { 'managed' }
+                    address = $resource.addr
+                    module_address = $resource.module
+                    name = $resource.resource_name
+                    change = @{ actions = @($actions) }
+                }
+            }
+            'change_summary' { $summary = $event.changes }
+        }
+    }
+    if (-not $supportedVersion -or $null -eq $summary -or $summary.operation -ne 'plan') {
+        throw 'Terraform did not provide a complete, supported plan event stream.'
+    }
+    $plan = @{ resource_changes = $changes }
+    Assert-CreateOnlyPreparation $plan
+    $creates = @($changes | Where-Object {
+        $_.mode -eq 'managed' -and ($_.change.actions -join ',') -eq 'create'
+    }).Count
+    if ($summary.change -ne 0 -or $summary.remove -ne 0 -or $summary.add -ne $creates) {
+        throw 'Plan event details do not match a create-only Terraform change summary.'
+    }
+    Write-Host "Plan: $creates to add, 0 to change, 0 to destroy."
+    return $plan
+}
+
 if ($MyInvocation.InvocationName -eq '.') { return }
 
 if (-not $env:MIGRATION_DIRECTORY) { throw 'MIGRATION_DIRECTORY is required.' }
@@ -93,17 +151,19 @@ module "cuny_prepare" {
 
 $planPath = Join-Path $env:MIGRATION_DIRECTORY 'prepare.tfplan'
 # Only the new hierarchy is in this apply; the deployed platform has independent drift.
-$planOutput = & terraform plan -input=false -no-color -parallelism=1 `
+$planOutput = & terraform plan -json -input=false -no-color -parallelism=1 `
     "-target=module.cuny_prepare" -lock-timeout=5m "-out=$planPath"
 $planExitCode = $LASTEXITCODE
-$planOutput | ForEach-Object { Write-Host $_ }
-if ($planExitCode -ne 0) { throw 'Terraform preparation plan failed.' }
-if (($planOutput -join "`n") -match 'PolicyRoleAssignmentError') {
-    throw 'Policy permission generation must succeed before preparation can apply.'
+if ($planExitCode -ne 0) {
+    $planOutput | ForEach-Object {
+        $event = $_ | ConvertFrom-Json -AsHashtable
+        if ($event.type -eq 'diagnostic') {
+            Write-Host "$($event.diagnostic.summary): $($event.diagnostic.detail)"
+        }
+    }
+    throw 'Terraform preparation plan failed.'
 }
-$plan = (& terraform show -json $planPath) | ConvertFrom-Json -AsHashtable -Depth 100
-if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect the preparation plan.' }
-Assert-CreateOnlyPreparation $plan
+$plan = ConvertFrom-PreparationEvents $planOutput
 
 $expected = @{
     management_groups_level_1 = 3
