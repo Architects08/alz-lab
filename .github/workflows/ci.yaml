@@ -20,6 +20,8 @@ on:
           - inventory
           - prepare-plan
           - prepare-apply
+          - cutover-plan
+          - cutover-apply
 
 jobs:
   validate_and_plan:

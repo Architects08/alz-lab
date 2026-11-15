@@ -34,7 +34,7 @@ function Get-CunyArchitecture {
     return ($encoded | ConvertFrom-Json | ConvertFrom-Json -AsHashtable)
 }
 
-function ConvertFrom-PreparationEvents {
+function ConvertFrom-PlanEvents {
     param([string[]] $Lines)
 
     $changes = @()
@@ -64,6 +64,7 @@ function ConvertFrom-PreparationEvents {
                     'delete' { @('delete') }
                     'replace' { @('delete', 'create') }
                     'read' { @('read') }
+                    'move' { @('move') }
                     default { throw "Unsupported planned action: $($event.change.action)" }
                 }
                 $changes += @{
@@ -71,6 +72,9 @@ function ConvertFrom-PreparationEvents {
                     address = $resource.addr
                     module_address = $resource.module
                     name = $resource.resource_name
+                    type = $resource.resource_type
+                    key = $resource.resource_key
+                    previous_address = $event.change.previous_resource.addr
                     change = @{ actions = @($actions) }
                 }
             }
@@ -81,14 +85,25 @@ function ConvertFrom-PreparationEvents {
         throw 'Terraform did not provide a complete, supported plan event stream.'
     }
     $plan = @{ resource_changes = $changes }
-    Assert-CreateOnlyPreparation $plan
-    $creates = @($changes | Where-Object {
-        $_.mode -eq 'managed' -and ($_.change.actions -join ',') -eq 'create'
-    }).Count
-    if ($summary.change -ne 0 -or $summary.remove -ne 0 -or $summary.add -ne $creates) {
-        throw 'Plan event details do not match a create-only Terraform change summary.'
+    $totals = @{ add = 0; change = 0; remove = 0 }
+    foreach ($change in $changes | Where-Object { $_.mode -eq 'managed' }) {
+        if ($change.change.actions -contains 'create') { $totals.add++ }
+        if ($change.change.actions -contains 'update') { $totals.change++ }
+        if ($change.change.actions -contains 'delete') { $totals.remove++ }
     }
-    Write-Host "Plan: $creates to add, 0 to change, 0 to destroy."
+    if ($summary.change -ne $totals.change -or $summary.remove -ne $totals.remove -or
+        $summary.add -ne $totals.add -or $summary.import -gt 0 -or
+        $summary.action_invocation -gt 0) {
+        throw 'Plan event details do not match the Terraform change summary.'
+    }
+    Write-Host "Plan: $($totals.add) to add, $($totals.change) to change, $($totals.remove) to destroy."
+    return $plan
+}
+
+function ConvertFrom-PreparationEvents {
+    param([string[]] $Lines)
+    $plan = ConvertFrom-PlanEvents $Lines
+    Assert-CreateOnlyPreparation $plan
     return $plan
 }
 
