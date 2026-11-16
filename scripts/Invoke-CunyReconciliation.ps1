@@ -28,6 +28,7 @@ module "management_groups" {
 $path = Join-Path $env:MIGRATION_DIRECTORY 'retained-imports.tfplan'
 $arguments = @('plan', '-input=false', '-no-color', "-out=$path")
 foreach ($address in $addresses) { $arguments += "-target=$address" }
+$arguments += '-target=module.management_groups[0].time_sleep.after_management_groups'
 Invoke-TerraformChecked $arguments
 $plan = Get-CutoverTypedPlan $path
 $metadata = @(Get-MetadataOnlyUpdates $plan)
@@ -42,6 +43,10 @@ foreach ($change in $plan.resource_changes) {
     }
     $actions = $change.change.actions -join ','
     if ($actions -eq 'no-op') { continue }
+    if ($change.address -eq 'module.management_groups[0].time_sleep.after_management_groups' -and
+        $change.type -eq 'time_sleep') {
+        continue
+    }
     if ($change.address -notin $addresses -or $actions -ne 'update' -or
         $change.address -notin $metadata) {
         throw "Reconciliation must only import retained groups and initialize metadata: $($change.address)"
