@@ -11,24 +11,9 @@ on:
         required: true
         default: '1.14.9'
         type: string
-      cuny_migration_stage:
-        description: 'Run a staged CUNY migration operation instead of normal CI'
-        type: choice
-        default: none
-        options:
-          - none
-          - inventory
-          - prepare-plan
-          - prepare-apply
-          - cutover-plan
-          - cutover-apply
-          - verify
-          - reconcile-plan
-          - reconcile-apply
 
 jobs:
   validate_and_plan:
-    if: github.event_name != 'workflow_dispatch' || inputs.cuny_migration_stage == 'none'
     uses: Architects08/alz-lab-templates/.github/workflows/ci-template.yaml@main
     name: 'CI'
     permissions:
@@ -39,12 +24,3 @@ jobs:
       root_module_folder_relative_path: '.'
       terraform_cli_version: ${{ inputs.terraform_cli_version }}
 
-  cuny_migration:
-    if: github.event_name == 'workflow_dispatch' && inputs.cuny_migration_stage != 'none'
-    uses: ./.github/workflows/cuny-migration.yaml
-    permissions:
-      id-token: write
-      contents: read
-    with:
-      stage: ${{ inputs.cuny_migration_stage }}
-      terraform_cli_version: ${{ inputs.terraform_cli_version }}

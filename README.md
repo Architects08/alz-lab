@@ -57,11 +57,10 @@ for API defaults and tenant-managed subnet NSGs. Those changes are separate from
 the CUNY hierarchy migration and were not applied during it. Review them
 independently rather than accepting NSG detachment as part of a governance update.
 
-The temporary CUNY preparation workflow targets only its new module and rejects
-any modification or deletion of existing resources. It explicitly forwards the
-same policy-permission and role-ID settings as the existing module, rather than
-using different module defaults. Run a full plan at cutover verification as well;
-targeted preparation is not a substitute for checking the complete deployment.
+The CUNY migration used isolated planning, guarded state transfers, and explicit
+parent verification. Temporary migration workflows and permissions are removed
+after verification. Use the normal full-plan CI workflow for day-two changes;
+targeted migration operations are not the normal deployment path.
 
 The Decommissioned management group uses the ID `alz-lab-decommissioned` in
 `lib/architecture_definitions/alz_custom.alz_architecture_definition.yaml`.
