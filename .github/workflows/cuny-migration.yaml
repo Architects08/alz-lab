@@ -34,7 +34,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$MIGRATION_STAGE" in
-            inventory|prepare-plan|prepare-apply|cutover-plan|cutover-apply|verify) ;;
+            inventory|prepare-plan|prepare-apply|cutover-plan|cutover-apply|verify|reconcile-plan|reconcile-apply) ;;
             *) echo "Unsupported migration stage: $MIGRATION_STAGE" >&2; exit 1 ;;
           esac
           umask 077
@@ -158,6 +158,13 @@ jobs:
         shell: pwsh
         run: ./scripts/Invoke-CunyVerification.ps1
 
+      - name: Reconcile retained group ownership without evaluating unrelated network resources
+        if: startsWith(inputs.stage, 'reconcile-')
+        shell: pwsh
+        env:
+          MIGRATION_STAGE: ${{ inputs.stage }}
+        run: ./scripts/Invoke-CunyReconciliation.ps1 -ReconciliationStage $env:MIGRATION_STAGE
+
       - name: Remove private runner scratch state
         if: always()
         run: |
@@ -167,6 +174,7 @@ jobs:
             rm -f -- "$MIGRATION_DIRECTORY/bridge.tfplan"
             rm -f -- "$MIGRATION_DIRECTORY/cutover-final.tfplan"
             rm -f -- "$MIGRATION_DIRECTORY/final-verification.tfplan"
+            rm -f -- "$MIGRATION_DIRECTORY/retained-imports.tfplan"
           fi
 
       - name: Remove isolated preview state
