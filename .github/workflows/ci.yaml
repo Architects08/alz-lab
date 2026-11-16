@@ -23,6 +23,8 @@ on:
           - cutover-plan
           - cutover-apply
           - verify
+          - reconcile-plan
+          - reconcile-apply
 
 jobs:
   validate_and_plan:
