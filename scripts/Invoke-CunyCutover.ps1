@@ -62,14 +62,12 @@ function Get-AzureJson {
 
 function Move-CunyManagementGroup {
     param([string] $Name)
-    $uri = "https://management.azure.com/providers/Microsoft.Management/managementGroups/${Name}?api-version=2023-04-01"
-    $body = @{
-        properties = @{ details = @{
-            parent = @{ id = '/providers/Microsoft.Management/managementGroups/cuny' }
-        } }
-    } | ConvertTo-Json -Depth 10 -Compress
-    & az rest --method patch --url $uri --body $body --only-show-errors --output none
-    if ($LASTEXITCODE -ne 0) { throw "Cannot move existing management group $Name." }
+    $result = Get-AzureJson @('account', 'management-group', 'update', '--name', $Name,
+        '--parent', 'cuny')
+    if ($result.name -ne $Name -or $result.details.parent.id -ne
+        '/providers/Microsoft.Management/managementGroups/cuny') {
+        throw "The management-group move was not confirmed for $Name."
+    }
 }
 
 function Assert-CutoverPlan {

@@ -47,6 +47,16 @@ old hierarchy. Bootstrap and platform states must not own the same group.
 Bootstrap must stop managing initial subscription placements once platform
 Terraform owns them; never rerun bootstrap blindly to change the hierarchy.
 
+Bootstrap owns `cuny` and the existing plan/apply identities' Reader/Owner grants
+at that scope. Platform Terraform alone owns ongoing subscription placements.
+Keep the original backend, runner, identity, and subscription IDs when updating
+the management-group hierarchy.
+
+The full lab plan also contains pre-existing in-place networking differences
+for API defaults and tenant-managed subnet NSGs. Those changes are separate from
+the CUNY hierarchy migration and were not applied during it. Review them
+independently rather than accepting NSG detachment as part of a governance update.
+
 The temporary CUNY preparation workflow targets only its new module and rejects
 any modification or deletion of existing resources. It explicitly forwards the
 same policy-permission and role-ID settings as the existing module, rather than
