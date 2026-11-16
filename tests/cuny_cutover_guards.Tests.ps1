@@ -106,3 +106,18 @@ if (@(Get-MetadataOnlyUpdates @{ resource_changes = @($typedMetadata) }).Count -
     throw 'An unknown resource-body change was misclassified as metadata.'
 }
 Write-Host 'CUNY provider-metadata classification tests passed.'
+
+$script:ReturnedParent = '/providers/Microsoft.Management/managementGroups/cuny'
+function Get-AzureJson {
+    param([Parameter(ValueFromRemainingArguments)][string[]] $Arguments)
+    if (($Arguments -join '|') -ne 'account|management-group|update|--name|platform|--parent|cuny') {
+        throw 'Unexpected management-group move operation.'
+    }
+    @{ name = 'platform'; details = @{ parent = @{ id = $script:ReturnedParent } } }
+}
+Move-CunyManagementGroup 'platform'
+$script:ReturnedParent = '/providers/Microsoft.Management/managementGroups/alz'
+$rejected = $false
+try { Move-CunyManagementGroup 'platform' } catch { $rejected = $true }
+if (-not $rejected) { throw 'An accepted but ineffective parent move was not rejected.' }
+Write-Host 'CUNY parent-move confirmation tests passed.'
