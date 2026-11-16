@@ -26,8 +26,9 @@ module "management_groups" {
 '@ | Set-Content 'cuny_cutover_override.tf'
 
 $path = Join-Path $env:MIGRATION_DIRECTORY 'retained-imports.tfplan'
-Invoke-TerraformChecked @('plan', '-input=false', '-no-color',
-    '-target=module.management_groups[0]', "-out=$path")
+$arguments = @('plan', '-input=false', '-no-color', "-out=$path")
+foreach ($address in $addresses) { $arguments += "-target=$address" }
+Invoke-TerraformChecked $arguments
 $plan = Get-CutoverTypedPlan $path
 $metadata = @(Get-MetadataOnlyUpdates $plan)
 $imports = 0
