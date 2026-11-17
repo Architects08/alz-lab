@@ -33,6 +33,15 @@ common workload controls without applying the former Corp/Local/Online-specific
 archetypes. The college DDoS policy remains disabled. Designing a new college
 baseline and deploying AMBA are separate changes.
 
+AMBA library `platform/amba` version `2026.10.0` defines only `amba_root`,
+`amba_platform`, `amba_landing_zones`, `amba_management`, `amba_connectivity`,
+and `amba_identity`. There are no `amba_sandbox`, `amba_security`, or
+`amba_decommissioned` archetypes; referencing them causes the ALZ provider's
+architecture initialization to fail during planning. Those groups retain their
+custom ALZ archetypes and inherit AMBA policy assignments from their ancestors.
+The `root_custom` override removes `Deploy-SvcHealth-BuiltIn` because
+`amba_root` supplies `Deploy-AMBA-Res-SvcHlth`.
+
 The runtime architecture and `platform-landing-zone.auto.tfvars` are mirrored by
 the Accelerator source architecture and `platform-landing-zone.tfvars` under
 `../config`. The runtime root is marked `exists: true` because bootstrap owns

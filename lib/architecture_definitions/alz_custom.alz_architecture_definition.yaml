@@ -42,7 +42,6 @@
 
 - "archetypes":
   - "sandbox_custom"
-  - "amba_sandbox"
   "display_name": "Sandbox"
   "exists": false
   "id": "sandbox"
@@ -50,7 +49,6 @@
 
 - "archetypes":
   - "security_custom"
-  - "amba_security"
   "display_name": "Security"
   "exists": false
   "id": "security"
@@ -82,7 +80,6 @@
 
 - "archetypes":
   - "decommissioned_custom"
-  - "amba_decommissioned"
   "display_name": "Decommissioned"
   "exists": false
   "id": "alz-lab-decommissioned"
