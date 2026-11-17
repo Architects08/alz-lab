@@ -2,6 +2,7 @@
 
 - "archetypes":
   - "root_custom"
+  - "amba_root"
   "display_name": "cuny"
   "exists": true
   "id": "cuny"
@@ -9,6 +10,7 @@
 
 - "archetypes":
   - "platform_custom"
+  - "amba_platform"
   "display_name": "Platform"
   "exists": false
   "id": "platform"
@@ -16,6 +18,7 @@
 
 - "archetypes":
   - "landing_zones_custom"
+  - "amba_landing_zones"
   "display_name": "BMCC"
   "exists": false
   "id": "bmcc"
@@ -23,6 +26,7 @@
 
 - "archetypes":
   - "landing_zones_custom"
+  - "amba_landing_zones"
   "display_name": "Queens"
   "exists": false
   "id": "queens"
@@ -30,6 +34,7 @@
 
 - "archetypes":
   - "landing_zones_custom"
+  - "amba_landing_zones"
   "display_name": "Brooklyn"
   "exists": false
   "id": "brooklyn"
@@ -51,6 +56,7 @@
 
 - "archetypes":
   - "management_custom"
+  - "amba_management"
   "display_name": "Management"
   "exists": false
   "id": "management"
@@ -58,6 +64,7 @@
 
 - "archetypes":
   - "connectivity_custom"
+  - "amba_connectivity"
   "display_name": "Connectivity"
   "exists": false
   "id": "connectivity"
@@ -65,6 +72,7 @@
 
 - "archetypes":
   - "identity_custom"
+  - "amba_identity"
   "display_name": "Identity"
   "exists": false
   "id": "identity"

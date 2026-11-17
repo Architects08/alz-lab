@@ -32,6 +32,9 @@ custom_replacements = {
   NOTE: You cannot refer to another custom name in this variable.
   */
   names = {
+    # Adding AMBA resource groups 
+    amba_resource_group_name                 = "rg-amba-$${starter_location_01}"
+    amba_user_assigned_managed_identity_name = "uami-mgmt-amba-$${starter_location_01}"
     # Defender email security contact
     defender_email_security_contact = "edwardtsagan@microsoft.com"
 
@@ -174,12 +177,30 @@ management_group_settings = {
   location           = "$${starter_location_01}"
   parent_resource_id = "$${root_parent_management_group_id}"
   policy_default_values = {
-    ama_change_tracking_data_collection_rule_id = "$${ama_change_tracking_data_collection_rule_id}"
-    ama_mdfc_sql_data_collection_rule_id        = "$${ama_mdfc_sql_data_collection_rule_id}"
-    ama_vm_insights_data_collection_rule_id     = "$${ama_vm_insights_data_collection_rule_id}"
-    ama_user_assigned_managed_identity_id       = "$${ama_user_assigned_managed_identity_id}"
-    ama_user_assigned_managed_identity_name     = "$${ama_user_assigned_managed_identity_name}"
-    log_analytics_workspace_id                  = "$${log_analytics_workspace_id}"
+    amba_alz_management_subscription_id            = "$${subscription_id_management}"
+    amba_alz_resource_group_location               = "$${starter_location_01}"
+    amba_alz_resource_group_name                   = "$${amba_resource_group_name}"
+    amba_alz_user_assigned_managed_identity_name   = "$${amba_user_assigned_managed_identity_name}"
+    amba_alz_action_group_email                    = []
+    amba_alz_arm_role_id                           = []
+    amba_alz_resource_group_tags                   = {}
+    amba_alz_byo_user_assigned_managed_identity_id = ""
+    amba_alz_disable_tag_name                      = "MonitorDisable"
+    amba_alz_disable_tag_values                    = ["true", "Test", "Dev", "Sandbox"]
+    amba_alz_webhook_service_uri                   = []
+    amba_alz_event_hub_resource_id                 = []
+    amba_alz_function_resource_id                  = ""
+    amba_alz_function_trigger_url                  = ""
+    amba_alz_logicapp_resource_id                  = ""
+    amba_alz_logicapp_callback_url                 = ""
+    amba_alz_byo_alert_processing_rule             = ""
+    amba_alz_byo_action_group                      = []
+    ama_change_tracking_data_collection_rule_id    = "$${ama_change_tracking_data_collection_rule_id}"
+    ama_mdfc_sql_data_collection_rule_id           = "$${ama_mdfc_sql_data_collection_rule_id}"
+    ama_vm_insights_data_collection_rule_id        = "$${ama_vm_insights_data_collection_rule_id}"
+    ama_user_assigned_managed_identity_id          = "$${ama_user_assigned_managed_identity_id}"
+    ama_user_assigned_managed_identity_name        = "$${ama_user_assigned_managed_identity_name}"
+    log_analytics_workspace_id                     = "$${log_analytics_workspace_id}"
     #ddos_protection_plan_id                     = "$${ddos_protection_plan_id}"
     private_dns_zone_subscription_id          = "$${subscription_id_connectivity}"
     private_dns_zone_region                   = "$${starter_location_01}"
