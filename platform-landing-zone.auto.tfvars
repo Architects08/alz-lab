@@ -81,7 +81,7 @@ custom_replacements = {
     primary_bastion_host_public_ip_name                          = "pip-bastion-hub-$${starter_location_01}"
 
     # Private DNS Zones primary
-    primary_auto_registration_zone_name = "$${starter_location_01}.azure.local"
+    primary_auto_registration_zone_name = "$${starter_location_01}.cuny.azure"
 
     # IP Ranges Primary
     # Regional Address Space: 10.0.0.0/16
@@ -304,13 +304,13 @@ You can use this section to customize the hub virtual networking that will be de
 connectivity_type = "hub_and_spoke_vnet"
 
 connectivity_resource_groups = {
-  ddos = {
-    name     = "$${ddos_resource_group_name}"
-    location = "$${starter_location_01}"
-    settings = {
-      enabled = "$${ddos_protection_plan_enabled}"
-    }
-  }
+  # ddos = {
+  #   name     = "$${ddos_resource_group_name}"
+  #   location = "$${starter_location_01}"
+  #   settings = {
+  #     enabled = "$${ddos_protection_plan_enabled}"
+  #   }
+  # }
   vnet_primary = {
     name     = "$${connectivity_hub_primary_resource_group_name}"
     location = "$${starter_location_01}"
@@ -331,11 +331,11 @@ hub_and_spoke_networks_settings = {
   enabled_resources = {
     ddos_protection_plan = "$${ddos_protection_plan_enabled}"
   }
-  ddos_protection_plan = {
-    name                = "$${ddos_protection_plan_name}"
-    resource_group_name = "$${ddos_resource_group_name}"
-    location            = "$${starter_location_01}"
-  }
+  # ddos_protection_plan = {
+  #   name                = "$${ddos_protection_plan_name}"
+  #   resource_group_name = "$${ddos_resource_group_name}"
+  #   location            = "$${starter_location_01}"
+  # }
 }
 
 hub_virtual_networks = {
@@ -358,6 +358,21 @@ hub_virtual_networks = {
       route_table_name_firewall     = "$${primary_route_table_firewall_name}"
       route_table_name_user_subnets = "$${primary_route_table_user_subnets_name}"
       subnets = {
+        dns_outbound = {
+          name             = "subnet-dns-outbound"
+          address_prefixes = ["10.0.0.176/28"]
+
+          route_table = {
+            assign_generated_route_table = false
+          }
+
+          delegations = [{
+            name = "dns-resolver"
+            service_delegation = {
+              name = "Microsoft.Network/dnsResolvers"
+            }
+          }]
+        }
         nva = {
           name             = "$${primary_subnet_nva_name}"
           address_prefixes = ["$${primary_nva_subnet_address_prefix}"]
@@ -369,6 +384,7 @@ hub_virtual_networks = {
       express_route = {
         name                                  = "$${primary_virtual_network_gateway_express_route_name}"
         hosted_on_behalf_of_public_ip_enabled = "$${primary_virtual_network_gateway_express_route_hobo_public_ip_enabled}"
+        sku                                   = "ErGwScale"
         ip_configurations = {
           default = {
             # name = "vnetGatewayConfigdefault"  # For backwards compatibility with previous naming, uncomment this line
@@ -405,8 +421,33 @@ hub_virtual_networks = {
       auto_registration_zone_name    = "$${primary_auto_registration_zone_name}"
     }
     private_dns_resolver = {
-      subnet_address_prefix = "$${primary_private_dns_resolver_subnet_address_prefix}"
-      name                  = "$${primary_private_dns_resolver_name}"
+      subnet_address_prefix            = "$${primary_private_dns_resolver_subnet_address_prefix}"
+      name                             = "$${primary_private_dns_resolver_name}"
+      default_inbound_endpoint_enabled = true
+      outbound_endpoints = {
+        onprem = {
+          name        = "dns-outbound"
+          subnet_name = "subnet-dns-outbound"
+
+          forwarding_ruleset = {
+            onprem = {
+              name = "dns-forwarding-onprem"
+
+              link_with_outbound_endpoint_virtual_network = true
+
+              rules = {
+                corporate = {
+                  domain_name = "corp.example.com."
+                  destination_ip_addresses = {
+                    "10.100.0.10" = "53"
+                    "10.100.0.11" = "53"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
     bastion = {
       subnet_address_prefix = "$${primary_bastion_subnet_address_prefix}"
